@@ -781,8 +781,7 @@ class StrategyBase:
         if notified_hosts is None:
             notified_hosts = self._notified_handlers[handler._uuid]
 
-        notified_hosts = [host for host in notified_hosts if
-            host in self._flushed_hosts and self._flushed_hosts[host]]
+        notified_hosts = self._filter_notified_hosts(notified_hosts)
 
         if len(notified_hosts) > 0:
             saved_name = handler.name
@@ -859,6 +858,15 @@ class StrategyBase:
             if h not in notified_hosts]
         display.debug("done running handlers, result is: %s" % result)
         return result
+
+    def _filter_notified_hosts(self, notified_hosts):
+        '''
+        Filter notified hosts accordingly to strategy
+        '''
+
+        # As main strategy is linear, we do not filter hosts
+        # We return a copy to avoid race conditions
+        return notified_hosts[:]
 
     def _take_step(self, task, host=None):
 

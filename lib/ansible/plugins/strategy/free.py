@@ -49,6 +49,15 @@ except ImportError:
 
 class StrategyModule(StrategyBase):
 
+    def _filter_notified_hosts(self, notified_hosts):
+        '''
+        Filter notified hosts accordingly to strategy
+        '''
+
+        # We act only on hosts that are ready to flush handlers
+        return [host for host in notified_hosts if
+            host in self._flushed_hosts and self._flushed_hosts[host]]
+
     def run(self, iterator, play_context):
         '''
         The "free" strategy is a bit more complex, in that it allows tasks to
@@ -150,7 +159,6 @@ class StrategyModule(StrategyBase):
 
                         if task.action == 'meta':
                             self._execute_meta(task, play_context, iterator, target_host=host)
-                            self._flushed_hosts[host_name] = True
                             self._blocked_hosts[host_name] = False
                         else:
                             # handle step if needed, skip meta actions as they are used internally
