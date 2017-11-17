@@ -573,6 +573,35 @@ class StrategyBase:
 
         return ret_results
 
+    def _wait_on_handler_results(self, iterator, handler, notified_hosts):
+        '''
+        Wait for the handler tasks to complete, using a short sleep
+        between checks to ensure we don't spin lock
+        '''
+
+        ret_results     = []
+        handler_results = 0
+
+        display.debug("waiting for handler results...")
+        while self._pending_results > 0\
+        and handler_results < len(notified_hosts)\
+        and not self._tqm._terminated:
+
+            if self._tqm.has_dead_workers():
+                raise AnsibleError("A worker was found in a dead state")
+
+            results = self._process_pending_results(iterator)
+            ret_results.extend(results)
+            handler_results += len([
+                r._host for r in results if r._host in notified_hosts
+                and r.task_name == handler.name])
+            if self._pending_results > 0:
+                time.sleep(C.DEFAULT_INTERNAL_POLL_INTERVAL)
+
+        display.debug("no more pending handlers, returning what we have")
+
+        return ret_results
+
     def _wait_on_pending_results(self, iterator):
         '''
         Wait for the shared counter to drop to zero, using a short sleep
@@ -749,16 +778,17 @@ class StrategyBase:
         #     self._tqm.send_callback('v2_playbook_on_no_hosts_remaining')
         #     result = False
         #     break
-        saved_name = handler.name
-        handler.name = handler_name
-        self._tqm.send_callback('v2_playbook_on_handler_task_start', handler)
-        handler.name = saved_name
-
         if notified_hosts is None:
             notified_hosts = self._notified_handlers[handler._uuid]
 
-        notified_hosts = set([host for host in notified_hosts if
-          host in self._flushed_hosts and self._flushed_hosts[host]])
+        notified_hosts = [host for host in notified_hosts if
+            host in self._flushed_hosts and self._flushed_hosts[host]]
+
+        if len(notified_hosts) > 0:
+            saved_name = handler.name
+            handler.name = handler_name
+            self._tqm.send_callback('v2_playbook_on_handler_task_start', handler)
+            handler.name = saved_name
 
         run_once = False
         try:
@@ -782,7 +812,7 @@ class StrategyBase:
                     break
 
         # collect the results from the handler run
-        host_results = self._wait_on_pending_results(iterator)
+        host_results = self._wait_on_handler_results(iterator, handler, notified_hosts)
 
         try:
             included_files = IncludedFile.process_include_results(
@@ -824,9 +854,9 @@ class StrategyBase:
                     continue
 
         # remove hosts from notification list
-        left_notified_hosts = set(self._notified_handlers[handler._uuid])
-        left_notified_hosts -= notified_hosts
-        self._notified_handlers[handler._uuid] = list(left_notified_hosts)
+        self._notified_handlers[handler._uuid] = [h for
+            h in self._notified_handlers[handler._uuid]
+            if h not in notified_hosts]
         display.debug("done running handlers, result is: %s" % result)
         return result
 
