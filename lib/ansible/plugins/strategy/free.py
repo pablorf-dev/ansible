@@ -150,6 +150,7 @@ class StrategyModule(StrategyBase):
 
                         if task.action == 'meta':
                             self._execute_meta(task, play_context, iterator, target_host=host)
+                            self._flushed_hosts[host_name] = True
                             self._blocked_hosts[host_name] = False
                         else:
                             # handle step if needed, skip meta actions as they are used internally

@@ -124,6 +124,10 @@ class StrategyBase:
         # outstanding tasks still in queue
         self._blocked_hosts = dict()
 
+        # this dictionary is used to keep track of hosts that have
+        # flushed handlers
+        self._flushed_hosts = dict()
+
         self._results = deque()
         self._results_lock = threading.Condition(threading.Lock())
 
@@ -751,8 +755,10 @@ class StrategyBase:
         handler.name = saved_name
 
         if notified_hosts is None:
-            # Avoid reference's concurrent updates
-            notified_hosts = set(self._notified_handlers[handler._uuid])
+            notified_hosts = self._notified_handlers[handler._uuid]
+
+        notified_hosts = set([host for host in notified_hosts if
+          host in self._flushed_hosts and self._flushed_hosts[host]])
 
         run_once = False
         try:
@@ -868,7 +874,9 @@ class StrategyBase:
             # FIXME: issue a callback for the noop here?
             msg = "noop"
         elif meta_action == 'flush_handlers':
+            self._flushed_hosts[target_host] = True
             self.run_handlers(iterator, play_context)
+            self._flushed_hosts[target_host] = False
             msg = "ran handlers"
         elif meta_action == 'refresh_inventory':
             self._inventory.refresh_inventory()
